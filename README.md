@@ -109,3 +109,11 @@ make dev
 curl http://localhost:8080/health
 # Expected: {"status":"ok","version":"1.0.0"}
 
+### Test commands
+
+```bash
+python -m pip install -e '.[test]'
+pytest -q
+npm install
+npm test
+```
