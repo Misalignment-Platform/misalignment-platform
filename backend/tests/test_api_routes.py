@@ -31,10 +31,9 @@ def test_event_ingestion_pipeline_and_system_views() -> None:
         "/api/systems/sys-1/policies",
         json={
             "id": "pol-1",
-            "system_id": "sys-1",
             "name": "No secrets",
             "description": "Disallow password exposure",
-            "rule_keywords": ["password"]
+            "rule_keywords": ["password"],
         },
         headers=_headers("systems:write"),
     )
@@ -54,7 +53,25 @@ def test_event_ingestion_pipeline_and_system_views() -> None:
     assert len(metrics_response.json()) >= 1
 
 
-def test_system_policy_validation_error() -> None:
+def test_request_dto_rejects_response_only_fields() -> None:
+    store = get_store()
+    store.reset()
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/events/ingest",
+        json={
+            "system_id": "sys-1",
+            "source": "webhook",
+            "content": "password leaked",
+            "risk_category": "high",
+        },
+        headers=_headers("events:write"),
+    )
+    assert response.status_code == 422
+
+
+def test_policy_request_rejects_invalid_or_extra_filter_fields() -> None:
     store = get_store()
     store.reset()
     client = TestClient(create_app())
@@ -72,8 +89,32 @@ def test_system_policy_validation_error() -> None:
             "system_id": "sys-2",
             "name": "No secrets",
             "description": "Disallow password exposure",
-            "rule_keywords": ["password"]
+            "rule_keywords": ["password"],
         },
         headers=_headers("systems:write"),
     )
-    assert response.status_code == 400
+    assert response.status_code == 422
+
+
+def test_pagination_and_filter_validation() -> None:
+    store = get_store()
+    store.reset()
+    client = TestClient(create_app())
+
+    client.post(
+        "/api/systems",
+        json={"id": "sys-1", "name": "Payments", "description": "Core service", "status": "active"},
+        headers=_headers("systems:write"),
+    )
+
+    bad_limit_response = client.get("/api/events?limit=0", headers=_headers("read"))
+    assert bad_limit_response.status_code == 422
+
+    bad_offset_response = client.get("/api/metrics/scores?offset=-1", headers=_headers("read"))
+    assert bad_offset_response.status_code == 422
+
+    bad_filter_response = client.get(
+        "/api/events?risk_category=critical",
+        headers=_headers("read"),
+    )
+    assert bad_filter_response.status_code == 422
